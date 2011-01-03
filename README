@@ -1,0 +1,80 @@
+NAME
+    Dancer::Plugin::WebSocket - A Dancer plugin for easily creating
+    WebSocket apps
+
+VERSION
+    version 0.0001
+
+SYNOPSIS
+        # ./bin/app.pl
+        use Dancer;
+        use Dancer::Plugin::WebSocket;
+
+        get '/' => sub { template 'index' };
+
+        any '/send_msg' => sub {
+            my $msg = params->{msg};
+            websocket_send($msg);
+            return "sent $msg\n";
+        };
+
+        dance;
+
+        # ./views/index.tt
+        <html>
+        <head>
+        <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
+        <script>
+        var socket;
+        $(function() {
+            // ws_path should be of the form ws://host/_hippie/ws
+            var ws_path = "ws:<% request.base.opaque %>_hippie/ws";
+            socket = new WebSocket(ws_path);
+            socket.onopen = function() {
+                $('#connection-status').text("Connected");
+            };
+            socket.onmessage = function(e) {
+                var data = JSON.parse(e.data);
+                if (data.msg)
+                    alert (data.msg);
+            };
+        });
+        function send_msg(message) {
+            socket.send(JSON.stringify({ msg: message }));
+        }
+        </script>
+        </head>
+        <body>
+        Connection Status: <span id="connection-status"> Disconnected </span>
+        <input value="Send Message" type=button onclick="send_msg('hello')" />
+        </body>
+        </html>
+
+        # Run app with Twiggy
+        plackup -s Twiggy bin/app.pl
+
+        # Visit http://localhost:5000 and click the button or interact via curl:
+        curl http://localhost:5000/send_msg?msg=hello
+
+DESCRIPTION
+    This plugin provides the keyword websocket_send, which takes 1 argument,
+    the message to send to the websocket. This plugin is built on top of
+    Web::Hippie, but it abstracts that out for you. You should be aware that
+    it registers 2 routes that Web::Hippie needs: get('/new_listener') and
+    get('/message'). Be careful to not define those routes in your app. This
+    requires that you have Plack and Web::Hippie installed. It also requires
+    that you run your app via Twiggy. I'm not sure why. For example:
+
+        plackup -s Twiggy bin/app.pl
+
+AUTHORS
+    *   Naveed Massjouni <naveedm9@gmail.com>
+
+    *   Franck Cuny <franck@lumberjaph.net>
+
+COPYRIGHT AND LICENSE
+    This software is copyright (c) 2010 by Naveed Massjouni.
+
+    This is free software; you can redistribute it and/or modify it under
+    the same terms as the Perl 5 programming language system itself.
+
