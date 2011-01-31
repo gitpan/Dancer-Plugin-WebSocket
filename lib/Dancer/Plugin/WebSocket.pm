@@ -2,17 +2,13 @@ package Dancer::Plugin::WebSocket;
 use Carp;
 use Dancer ':syntax';
 
-our $VERSION = 0.0001;# VERSION
+our $VERSION = 0.0100;# VERSION
 
-BEGIN {
-    foreach my $req (qw(AnyMQ Plack Web::Hippie)) {
-        croak "$req is required for WebSocket support"
-            unless Dancer::ModuleLoader->load($req);
-    }
-}
-
-use Dancer::Plugin;
 use AnyMQ;
+use Dancer::Plugin;
+use Plack;
+use Web::Hippie;
+use Carp;
 
 my $bus;
 sub _bus {
@@ -26,6 +22,8 @@ sub _topic {
     return $topic = _bus->topic('dancer-plugin-websocket');
 }
 
+my $triggers = {};
+
 set plack_middlewares_map => {
     '/_hippie' => [
         [ '+Web::Hippie' ],
@@ -33,18 +31,46 @@ set plack_middlewares_map => {
     ]
 };
 
-# Web::Hippie routes
+# /new_listener and /message are routes needed by Web::Hippie
+
 get '/new_listener' => sub {
+
+    if (defined $triggers->{on_new_listener}) {
+        $triggers->{on_new_listener}->();
+    }
+
     request->env->{'hippie.listener'}->subscribe(_topic);
 };
+
 get '/message' => sub {
     my $msg = request->env->{'hippie.message'};
+
+    if ( defined $triggers->{on_message} ) {
+        $msg = $triggers->{on_message}->($msg);
+    }
     _topic->publish($msg);
 };
 
-register websocket_send => sub {
+my $ws_send = sub {
     my $msg = shift;
     _topic->publish({ msg => $msg });
+};
+
+register ws_on_message => sub {
+    $triggers->{on_message} = shift;
+};
+
+register ws_on_new_listener => sub {
+    $triggers->{on_new_listener} = shift;
+};
+
+register ws_send => sub {
+    $ws_send->(@_);
+};
+
+register websocket_send => sub {
+    carp "'websocket_send' is deprecated. You should use 'ws_send' instead.";
+    $ws_send->(@_);
 };
 
 register_plugin;
@@ -63,7 +89,7 @@ Dancer::Plugin::WebSocket - A Dancer plugin for easily creating WebSocket apps
 
 =head1 VERSION
 
-version 0.0001
+version 0.0100
 
 =head1 SYNOPSIS
 
@@ -71,67 +97,93 @@ version 0.0001
     use Dancer;
     use Dancer::Plugin::WebSocket;
 
-    get '/' => sub { template 'index' };
-
-    any '/send_msg' => sub {
-        my $msg = params->{msg};
-        websocket_send($msg);
-        return "sent $msg\n";
-    };
-
-    dance;
-
-    # ./views/index.tt
-    <html>
-    <head>
-    <script src="http://ajax.googleapis.com/ajax/libs/jquery/1.4.2/jquery.min.js"></script>
-    <script>
-    var socket;
-    $(function() {
-        // ws_path should be of the form ws://host/_hippie/ws
-        var ws_path = "ws:<% request.base.opaque %>_hippie/ws";
-        socket = new WebSocket(ws_path);
+    get '/' => sub {q[
+        <html>
+        <head>
+        <script>
+        var ws_path = "ws://localhost:5000/_hippie/ws";
+        var socket = new WebSocket(ws_path);
         socket.onopen = function() {
-            $('#connection-status').text("Connected");
+            document.getElementById('conn-status').innerHTML = 'Connected';
         };
         socket.onmessage = function(e) {
             var data = JSON.parse(e.data);
             if (data.msg)
                 alert (data.msg);
         };
-    });
-    function send_msg(message) {
-        socket.send(JSON.stringify({ msg: message }));
-    }
-    </script>
-    </head>
-    <body>
-    Connection Status: <span id="connection-status"> Disconnected </span>
-    <input value="Send Message" type=button onclick="send_msg('hello')" />
-    </body>
-    </html>
+        function send_msg(message) {
+            socket.send(JSON.stringify({ msg: message }));
+        }
+        </script>
+        </head>
+        <body>
+        Connection Status: <span id="conn-status"> Disconnected </span>
+        <input value="Send Message" type=button onclick="send_msg('hello')" />
+        </body>
+        </html>
+    ]};
+
+    dance;
 
     # Run app with Twiggy
-    plackup -s Twiggy bin/app.pl
+    twiggy --listen :5000 bin/app.pl
 
-    # Visit http://localhost:5000 and click the button or interact via curl:
-    curl http://localhost:5000/send_msg?msg=hello
+    # Now you can visit http://localhost:5000 with a browser that supports
+    # WebSockets, such as Chrome.
 
 =head1 DESCRIPTION
 
-This plugin provides the keyword websocket_send, which takes 1 argument,
-the message to send to the websocket.
-This plugin is built on top of L<Web::Hippie>, but it abstracts that out for
-you.
+This goal of this plugin is to make it as easy as possible to create WebSocket
+enabled apps with L<Dancer>.
+It is built on top of L<Web::Hippie>, but it abstracts that out as much as
+possible.
 You should be aware that it registers 2 routes that Web::Hippie needs:
 get('/new_listener') and get('/message').
 Be careful to not define those routes in your app.
-This requires that you have L<Plack> and L<Web::Hippie> installed.
-It also requires that you run your app via L<Twiggy>.
-I'm not sure why.
+
+This plugin currently requires that you run your app via L<Twiggy>.
 For example:
 
-    plackup -s Twiggy bin/app.pl
+    twiggy --listen :5000 bin/app.pl
+
+=head1 METHODS
+
+These methods allow you to interact with WebSockets from the server side.
+If you are only going to interact with WebSockets from javascript,
+as shown in the L</SYNOPSIS>, then these are not necessary.
+
+=head2 ws_on_message (\&handler)
+
+Registers a handler that gets triggered when a new message arrives.
+The handler gets passed 1 argument, a data structure containing the message.
+Note that if you register a handler in this way, the onmessage callback
+of the WebSocket object in your javascript will not get triggered.
+
+    ws_on_message sub {
+        my $data = shift;
+        debug $data->{msg};
+    };
+
+=head2 ws_on_new_listener (\&handler)
+
+Registers a handler that gets triggered when a new listener is created.
+The handler gets passed no arguments.
+
+    ws_on_new_listener sub {
+        # do something when a new listener is created
+    };
+
+=head2 ws_send ($message)
+
+Allows you to send a WebSocket message from within a Dancer route.
+
+    any '/send_msg' => sub {
+        my $msg = params->{msg};
+        ws_send $msg;
+    };
+
+    # Now you can send a message to your application via curl:
+    curl http://localhost:5000/send_msg?msg=hello
 
 =head1 AUTHORS
 

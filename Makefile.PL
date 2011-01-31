@@ -20,13 +20,12 @@ my %WriteMakefileArgs = (
   'LICENSE' => 'perl',
   'NAME' => 'Dancer::Plugin::WebSocket',
   'PREREQ_PM' => {
-    'AnyMQ' => '0',
-    'Dancer' => '1.3000_02',
-    'Plack' => '0',
-    'Twiggy' => '0',
-    'Web::Hippie' => '0'
+    'AnyMQ' => '0.32',
+    'Dancer' => '1.3001',
+    'Twiggy' => '0.1010',
+    'Web::Hippie' => '0.35'
   },
-  'VERSION' => '0.0001',
+  'VERSION' => '0.0100',
   'test' => {
     'TESTS' => 't/*.t'
   }

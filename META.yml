@@ -14,12 +14,11 @@ meta-spec:
   version: 1.4
 name: Dancer-Plugin-WebSocket
 requires:
-  AnyMQ: 0
-  Dancer: 1.3000_02
-  Plack: 0
-  Twiggy: 0
-  Web::Hippie: 0
+  AnyMQ: 0.32
+  Dancer: 1.3001
+  Twiggy: 0.1010
+  Web::Hippie: 0.35
 resources:
   bugtracker: http://github.com/ironcamel/Dancer-Plugin-WebSocket/issues
   repository: git://github.com/ironcamel/Dancer-Plugin-WebSocket.git
-version: 0.0001
+version: 0.0100
